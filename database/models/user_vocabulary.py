@@ -51,7 +51,11 @@ class UserVocabulary(Base):
     )
 
     status: Mapped[VocabStatus] = mapped_column(
-        Enum(VocabStatus, name="vocab_status"),
+        Enum(
+            VocabStatus,
+            name="vocab_status",
+            values_callable=lambda x: [e.value for e in x]  # Забезпечує збереження значень у нижньому регістрі
+        ),
         nullable=False,
         default=VocabStatus.LEARNING,
     )
