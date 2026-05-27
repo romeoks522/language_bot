@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Language Bot — Study</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+</head>
+<body>
+    <div class="app">
+        <!-- ============ Header card ============ -->
+        <header class="header-card">
+            <div class="progress-ring" aria-label="Words learned">
+                <svg class="progress-svg" viewBox="0 0 120 120" aria-hidden="true">
+                    <circle class="ring-bg" cx="60" cy="60" r="52"></circle>
+                    <circle id="ring-progress" class="ring-fg" cx="60" cy="60" r="52"></circle>
+                </svg>
+                <div class="ring-text">
+                    <div class="ring-label">WORDS<br>LEARNED:</div>
+                    <div class="ring-value" id="words-learned">—</div>
+                    <div class="ring-today">Today: <span id="today-count">0</span> / 30</div>
+                </div>
+            </div>
+
+            <div class="header-actions" aria-hidden="true">
+                <button class="icon-btn" id="btn-settings" title="Settings">⚙</button>
+                <button class="icon-btn" id="btn-sound" title="Sound">🔊</button>
+                <button class="icon-btn" id="btn-vibrate" title="Vibration">📳</button>
+            </div>
+        </header>
+
+        <!-- ============ Card area ============ -->
+        <section class="card-area">
+            <div class="hint hint-up" aria-hidden="true">Confused</div>
+
+            <div class="card-wrapper">
+                <div class="hint hint-left" aria-hidden="true">Don't Know</div>
+
+                <article id="word-card" class="word-card" role="region" aria-live="polite">
+                    <div class="card-arrow card-arrow-up">︿</div>
+                    <div class="card-content">
+                        <h1 class="word-text" id="word-text">Loading…</h1>
+                        <p class="word-ipa" id="word-ipa"></p>
+                    </div>
+                    <div class="card-arrows-side">
+                        <span class="card-arrow card-arrow-left">‹</span>
+                        <span class="card-arrow card-arrow-right">›</span>
+                    </div>
+                    <button class="audio-btn" id="audio-btn" title="Play pronunciation" aria-label="Play pronunciation">🔊</button>
+                </article>
+
+                <div class="hint hint-right" aria-hidden="true">Know</div>
+            </div>
+
+            <div class="story-progress" aria-hidden="true">
+                <span class="story-icon">🧠</span> AI STORY PROGRESS: <strong>6/8</strong>
+            </div>
+        </section>
+
+        <!-- ============ Bottom nav ============ -->
+        <nav class="bottom-nav" aria-label="Main navigation">
+            <button class="nav-btn nav-btn-active" data-tab="study">
+                <span class="nav-icon">🃏</span><span class="nav-label">STUDY</span>
+            </button>
+            <button class="nav-btn" data-tab="tenses">
+                <span class="nav-icon">⏰</span><span class="nav-label">TENSES</span>
+            </button>
+            <button class="nav-btn" data-tab="stories">
+                <span class="nav-icon">📝</span><span class="nav-label">AI STORIES</span>
+            </button>
+            <button class="nav-btn" data-tab="words">
+                <span class="nav-icon">📁</span><span class="nav-label">WORDS</span>
+            </button>
+            <button class="nav-btn" data-tab="profile">
+                <span class="nav-icon">👤</span><span class="nav-label">PROFILE</span>
+            </button>
+        </nav>
+
+        <!-- Toast / error -->
+        <div id="toast" class="toast" role="status"></div>
+    </div>
+
+    <script src="/static/swipe_logic.js"></script>
+</body>
+</html>
