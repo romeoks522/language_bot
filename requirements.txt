@@ -3,3 +3,9 @@ alembic>=1.13.0
 asyncpg>=0.29.0
 python-dotenv>=1.0.0
 greenlet>=3.0.0
+
+# Telegram bot + Web App
+aiogram>=3.4.0,<4.0.0
+fastapi>=0.110.0
+uvicorn[standard]>=0.27.0
+jinja2>=3.1.0
