@@ -14,7 +14,12 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 # autogenerate inspects it.  Import order matters: models must be imported
 # before Base.metadata is passed to Alembic.
 from database.connection import Base  # noqa: E402
-from database.models import User, UserVocabulary, Word  # noqa: F401, E402
+from database.models import (  # noqa: F401, E402
+    User,
+    UserBlockWord,
+    UserVocabulary,
+    Word,
+)
 
 # Alembic Config object — gives access to values in alembic.ini.
 config = context.config

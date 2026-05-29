@@ -206,7 +206,10 @@ async def get_next_word(
                 Word.id.not_in(seen_subq),
             )
         )
-        .order_by(Word.id)   # deterministic ordering; shuffle can be added
+        # Most common (highest frequency) words first so learners meet the
+        # most practical vocabulary earliest. NULL scores sort last; Word.id
+        # is the deterministic tie-breaker.
+        .order_by(Word.frequency_score.desc().nullslast(), Word.id)
         .limit(1)
     )
     new_word: Word | None = new_word_result.scalar_one_or_none()

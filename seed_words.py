@@ -31,10 +31,12 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import csv
 import re
 import sys
 from pathlib import Path
 
+from sqlalchemy import select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from database.connection import AsyncSessionFactory
@@ -54,6 +56,12 @@ LEVEL_MAP: dict[str, int] = {
 
 # Default location of the seed text file inside the repository.
 DEFAULT_SOURCE = Path(__file__).resolve().parent / "database" / "seed" / "oxford_words.txt"
+
+# Default frequency-ranked CSV (columns: word, cefr_level, frequency). Higher
+# frequency == more common == easier. Used to backfill ``Word.difficulty_rank``.
+DEFAULT_FREQUENCY_SOURCE = (
+    Path(__file__).resolve().parent / "database" / "seed" / "oxford_frequency_ranked.csv"
+)
 
 # Parenthesised disambiguators are stripped entirely along with the
 # whitespace preceding them, so "bear (deal with) v. B2" becomes "bear v. B2".
@@ -223,6 +231,57 @@ async def insert_words(words: dict[str, int]) -> int:
     return inserted
 
 
+def load_frequencies(source: Path) -> dict[str, float]:
+    """Parse the frequency CSV into ``{lowercased_word: max_frequency}``.
+
+    The file may contain duplicate words (different senses / parts of speech);
+    we keep the **highest** frequency seen for each word, mirroring the "lowest
+    CEFR level wins" rule used when deduplicating the word pool itself.
+    """
+    freqs: dict[str, float] = {}
+    with source.open(encoding="utf-8", newline="") as fh:
+        reader = csv.DictReader(fh)
+        for row in reader:
+            word = (row.get("word") or "").strip().lower()
+            if not word:
+                continue
+            try:
+                freq = float(row.get("frequency", ""))
+            except (TypeError, ValueError):
+                continue
+            if word not in freqs or freq > freqs[word]:
+                freqs[word] = freq
+    return freqs
+
+
+async def backfill_frequency_scores(frequency_source: Path) -> int:
+    """Populate ``Word.frequency_score`` from the frequency-ranked CSV.
+
+    Each word's score is matched case-insensitively against the CSV. Words
+    absent from the file keep ``NULL`` (they sort last wherever the score is
+    used for ordering). Returns the number of rows updated with a score.
+    """
+    freqs = load_frequencies(frequency_source)
+
+    async with AsyncSessionFactory() as session:
+        async with session.begin():
+            rows = (
+                await session.execute(select(Word.id, Word.english_word))
+            ).all()
+
+            params: list[dict[str, float | int]] = []
+            for word_id, english_word in rows:
+                freq = freqs.get(english_word.lower())
+                if freq is None:
+                    continue
+                params.append({"id": word_id, "frequency_score": freq})
+
+            if params:
+                # ORM bulk UPDATE by primary key (single executemany round-trip).
+                await session.execute(update(Word), params)
+    return len(params)
+
+
 async def seed_words(source: Path, dry_run: bool = False) -> tuple[int, int, int]:
     """End-to-end pipeline: parse ``source`` and load it into the DB.
 
@@ -258,6 +317,20 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
         action="store_true",
         help="Parse the file and print stats without touching the database.",
     )
+    parser.add_argument(
+        "--frequency-source",
+        type=Path,
+        default=DEFAULT_FREQUENCY_SOURCE,
+        help=(
+            "Path to the frequency-ranked CSV used to populate "
+            f"Word.frequency_score (default: {DEFAULT_FREQUENCY_SOURCE})."
+        ),
+    )
+    parser.add_argument(
+        "--skip-frequency",
+        action="store_true",
+        help="Skip the frequency_score backfill step.",
+    )
     return parser.parse_args(argv)
 
 
@@ -266,13 +339,29 @@ def main(argv: list[str] | None = None) -> None:
     if not args.source.exists():
         sys.exit(f"Source file not found: {args.source}")
 
-    parsed, unique, inserted = asyncio.run(seed_words(args.source, dry_run=args.dry_run))
-    print(f"Parsed:   {parsed} (word, level) pairs")
-    print(f"Unique:   {unique} words after deduplication (keeping minimum level)")
-    if args.dry_run:
-        print("Dry run — no database writes performed.")
-    else:
+    async def _run() -> None:
+        # Both steps must share a single event loop because they reuse the
+        # module-level async engine / connection pool (asyncpg connections are
+        # bound to the loop that created them).
+        parsed, unique, inserted = await seed_words(args.source, dry_run=args.dry_run)
+        print(f"Parsed:   {parsed} (word, level) pairs")
+        print(f"Unique:   {unique} words after deduplication (keeping minimum level)")
+        if args.dry_run:
+            print("Dry run — no database writes performed.")
+            return
+
         print(f"Inserted: {inserted} new rows (ON CONFLICT DO NOTHING)")
+
+        if args.skip_frequency:
+            print("Skipped frequency_score backfill (--skip-frequency).")
+            return
+        if not args.frequency_source.exists():
+            print(f"Frequency file not found, skipping frequency backfill: {args.frequency_source}")
+            return
+        scored = await backfill_frequency_scores(args.frequency_source)
+        print(f"Scored:   {scored} words with frequency_score (higher == more common)")
+
+    asyncio.run(_run())
 
 
 if __name__ == "__main__":

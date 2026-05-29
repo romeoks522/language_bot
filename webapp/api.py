@@ -28,22 +28,30 @@ from pathlib import Path
 from typing import Annotated
 from urllib.parse import parse_qsl
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Request
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.blocks import (
+    SUPPORTED_LEVEL_INTS,
+    block_ranges,
+    shuffle_for_block,
+)
 from core.srs_engine import (
+    CEFR_STR_TO_INT,
     cefr_int_to_str,
     get_next_word,
     schedule_word,
 )
 from database.connection import get_session
 from database.models.user import User
-from database.models.user_vocabulary import UserVocabulary
+from database.models.user_block_word import UserBlockWord
+from database.models.user_vocabulary import UserVocabulary, VocabStatus
 from database.models.word import Word
 from utils.logger import get_logger
 
@@ -161,6 +169,58 @@ class SwipeResponse(BaseModel):
     user: UserStats
 
 
+# --- Level / block ("Words" tab) models ------------------------------------
+
+class LevelSummary(BaseModel):
+    level: str                  # "A1".."B2"
+    total_words: int
+    blocks_total: int
+    blocks_completed: int
+    words_completed: int
+
+
+class BlockSummary(BaseModel):
+    block_index: int
+    word_count: int
+    completed_count: int
+    knew: int
+    learning: int
+    confusing: int
+    completed: bool
+
+
+class BlockWord(BaseModel):
+    id: int
+    text: str
+    cefr_level: str
+    status: str | None          # "learning"/"confusing"/"knew_it" or null if unseen
+
+
+class BlockWordsResponse(BaseModel):
+    level: str
+    block_index: int
+    total: int
+    mode: str                   # "full" | "retry"
+    words: list[BlockWord]
+
+
+class BlockSwipeRequest(BaseModel):
+    word_id: int = Field(..., description="Word.id of the card that was swiped")
+    direction: str = Field(..., pattern="^(left|right|up)$")
+
+
+class BlockSwipeResponse(BaseModel):
+    block: BlockSummary
+
+
+class BlockCompleteResponse(BaseModel):
+    level: str
+    block_index: int
+    summary: BlockSummary
+    retry_word_ids: list[int]
+    has_retry: bool
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -200,6 +260,72 @@ async def _compute_user_stats(session: AsyncSession, user: User) -> UserStats:
         current_streak=user.current_streak,
         words_learned=words_learned,
         cefr_level=user.cefr_level,
+    )
+
+
+# --- Level / block helpers -------------------------------------------------
+
+_STATUS_BY_DIRECTION = {
+    "left": VocabStatus.LEARNING,
+    "up": VocabStatus.CONFUSING,
+    "right": VocabStatus.KNEW_IT,
+}
+
+
+def _level_int_from_path(level: str) -> int:
+    """Map an "A1".."B2" path segment to its int, or raise 404."""
+    level_int = CEFR_STR_TO_INT.get(level.upper())
+    if level_int is None or level_int not in SUPPORTED_LEVEL_INTS:
+        raise HTTPException(status_code=404, detail=f"Unknown level: {level!r}")
+    return level_int
+
+
+async def _level_words_ordered(session: AsyncSession, level_int: int) -> list[Word]:
+    """All words for a level, easiest -> hardest (frequency desc, id tiebreak)."""
+    result = await session.execute(
+        select(Word)
+        .where(Word.cefr_level == level_int)
+        .order_by(Word.frequency_score.desc().nullslast(), Word.id)
+    )
+    return list(result.scalars().all())
+
+
+async def _block_statuses(
+    session: AsyncSession, user_id: int, level_int: int
+) -> dict[int, VocabStatus]:
+    """Map of ``word_id -> latest block status`` for a user at a level."""
+    result = await session.execute(
+        select(UserBlockWord.word_id, UserBlockWord.status).where(
+            UserBlockWord.user_id == user_id,
+            UserBlockWord.cefr_level == level_int,
+        )
+    )
+    return {row[0]: row[1] for row in result.all()}
+
+
+def _summarize_block(
+    block_index: int,
+    block_word_ids: list[int],
+    statuses: dict[int, VocabStatus],
+) -> BlockSummary:
+    knew = learning = confusing = 0
+    for wid in block_word_ids:
+        st = statuses.get(wid)
+        if st is VocabStatus.KNEW_IT:
+            knew += 1
+        elif st is VocabStatus.LEARNING:
+            learning += 1
+        elif st is VocabStatus.CONFUSING:
+            confusing += 1
+    completed_count = knew + learning + confusing
+    return BlockSummary(
+        block_index=block_index,
+        word_count=len(block_word_ids),
+        completed_count=completed_count,
+        knew=knew,
+        learning=learning,
+        confusing=confusing,
+        completed=len(block_word_ids) > 0 and completed_count >= len(block_word_ids),
     )
 
 
@@ -258,3 +384,207 @@ async def api_swipe(
 
     await session.commit()
     return SwipeResponse(user=await _compute_user_stats(session, user))
+
+
+# ---------------------------------------------------------------------------
+# Level / block routes ("Words" tab) — independent of the SRS clock
+# ---------------------------------------------------------------------------
+
+@app.get("/api/levels", response_model=list[LevelSummary])
+async def api_levels(
+    user_id: Annotated[int, Depends(get_current_user_id)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> list[LevelSummary]:
+    """The four CEFR entry-point cards for the Words tab."""
+    await _load_user_or_create(session, user_id)
+
+    summaries: list[LevelSummary] = []
+    for level_int in SUPPORTED_LEVEL_INTS:
+        words = await _level_words_ordered(session, level_int)
+        statuses = await _block_statuses(session, user_id, level_int)
+        ranges = block_ranges(len(words))
+
+        blocks_completed = 0
+        for block_index, (start, end) in enumerate(ranges):
+            block_ids = [w.id for w in words[start:end]]
+            if _summarize_block(block_index, block_ids, statuses).completed:
+                blocks_completed += 1
+
+        summaries.append(
+            LevelSummary(
+                level=cefr_int_to_str(level_int),
+                total_words=len(words),
+                blocks_total=len(ranges),
+                blocks_completed=blocks_completed,
+                words_completed=sum(1 for w in words if w.id in statuses),
+            )
+        )
+    return summaries
+
+
+@app.get("/api/levels/{level}/blocks", response_model=list[BlockSummary])
+async def api_level_blocks(
+    level: str,
+    user_id: Annotated[int, Depends(get_current_user_id)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> list[BlockSummary]:
+    """Scrollable list of blocks (with progress-ring data) for one level."""
+    await _load_user_or_create(session, user_id)
+    level_int = _level_int_from_path(level)
+
+    words = await _level_words_ordered(session, level_int)
+    statuses = await _block_statuses(session, user_id, level_int)
+    ranges = block_ranges(len(words))
+
+    return [
+        _summarize_block(block_index, [w.id for w in words[start:end]], statuses)
+        for block_index, (start, end) in enumerate(ranges)
+    ]
+
+
+@app.get("/api/blocks/{level}/{block_index}", response_model=BlockWordsResponse)
+async def api_block_words(
+    level: str,
+    block_index: int,
+    user_id: Annotated[int, Depends(get_current_user_id)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+    mode: Annotated[str, Query(pattern="^(full|retry)$")] = "full",
+) -> BlockWordsResponse:
+    """The shuffled cards for one block.
+
+    ``mode=retry`` returns only the words currently marked Left (learning) or
+    Up (confusing) — Right (knew_it) words are filtered out.
+    """
+    await _load_user_or_create(session, user_id)
+    level_int = _level_int_from_path(level)
+
+    words = await _level_words_ordered(session, level_int)
+    ranges = block_ranges(len(words))
+    if not (0 <= block_index < len(ranges)):
+        raise HTTPException(status_code=404, detail="block_index out of range")
+
+    start, end = ranges[block_index]
+    block_words = words[start:end]
+    ordered = shuffle_for_block(block_words, user_id, level_int, block_index)
+
+    statuses = await _block_statuses(session, user_id, level_int)
+    if mode == "retry":
+        ordered = [
+            w for w in ordered
+            if statuses.get(w.id) in (VocabStatus.LEARNING, VocabStatus.CONFUSING)
+        ]
+
+    return BlockWordsResponse(
+        level=cefr_int_to_str(level_int),
+        block_index=block_index,
+        total=len(ordered),
+        mode=mode,
+        words=[
+            BlockWord(
+                id=w.id,
+                text=w.english_word,
+                cefr_level=cefr_int_to_str(w.cefr_level),
+                status=(statuses[w.id].value if w.id in statuses else None),
+            )
+            for w in ordered
+        ],
+    )
+
+
+@app.post(
+    "/api/blocks/{level}/{block_index}/swipe",
+    response_model=BlockSwipeResponse,
+)
+async def api_block_swipe(
+    level: str,
+    block_index: int,
+    payload: BlockSwipeRequest,
+    user_id: Annotated[int, Depends(get_current_user_id)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> BlockSwipeResponse:
+    """Record one block swipe (upsert per word) and return block progress.
+
+    This never touches ``UserVocabulary`` / the SRS clock — block mode is a
+    fully separate learning surface.
+    """
+    await _load_user_or_create(session, user_id)
+    level_int = _level_int_from_path(level)
+
+    words = await _level_words_ordered(session, level_int)
+    ranges = block_ranges(len(words))
+    if not (0 <= block_index < len(ranges)):
+        raise HTTPException(status_code=404, detail="block_index out of range")
+
+    start, end = ranges[block_index]
+    block_word_ids = [w.id for w in words[start:end]]
+    if payload.word_id not in block_word_ids:
+        raise HTTPException(status_code=404, detail="word_id is not in this block")
+
+    status = _STATUS_BY_DIRECTION[payload.direction]
+
+    stmt = (
+        pg_insert(UserBlockWord)
+        .values(
+            user_id=user_id,
+            word_id=payload.word_id,
+            cefr_level=level_int,
+            block_index=block_index,
+            status=status,
+        )
+        .on_conflict_do_update(
+            constraint="uq_user_block_word",
+            set_={
+                "status": status,
+                "cefr_level": level_int,
+                "block_index": block_index,
+                "updated_at": func.now(),
+            },
+        )
+    )
+    await session.execute(stmt)
+    await session.commit()
+
+    statuses = await _block_statuses(session, user_id, level_int)
+    return BlockSwipeResponse(
+        block=_summarize_block(block_index, block_word_ids, statuses)
+    )
+
+
+@app.post(
+    "/api/blocks/{level}/{block_index}/complete",
+    response_model=BlockCompleteResponse,
+)
+async def api_block_complete(
+    level: str,
+    block_index: int,
+    user_id: Annotated[int, Depends(get_current_user_id)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> BlockCompleteResponse:
+    """Finalize a block session: summary + the Left/Up words to retry."""
+    await _load_user_or_create(session, user_id)
+    level_int = _level_int_from_path(level)
+
+    words = await _level_words_ordered(session, level_int)
+    ranges = block_ranges(len(words))
+    if not (0 <= block_index < len(ranges)):
+        raise HTTPException(status_code=404, detail="block_index out of range")
+
+    start, end = ranges[block_index]
+    block_words = words[start:end]
+    block_word_ids = [w.id for w in block_words]
+    statuses = await _block_statuses(session, user_id, level_int)
+
+    # Preserve the block's shuffled order for the retry set.
+    ordered = shuffle_for_block(block_words, user_id, level_int, block_index)
+    retry_word_ids = [
+        w.id for w in ordered
+        if statuses.get(w.id) in (VocabStatus.LEARNING, VocabStatus.CONFUSING)
+    ]
+
+    return BlockCompleteResponse(
+        level=cefr_int_to_str(level_int),
+        block_index=block_index,
+        summary=_summarize_block(block_index, block_word_ids, statuses),
+        retry_word_ids=retry_word_ids,
+        has_retry=len(retry_word_ids) > 0,
+    )
