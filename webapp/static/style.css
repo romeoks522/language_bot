@@ -237,6 +237,10 @@ html, body {
     will-change: transform, opacity;
 }
 
+/* display:flex above would otherwise override the UA [hidden] rule, so the
+   runner card stays visible after a block completes. */
+.word-card[hidden] { display: none; }
+
 .word-card:active {
     cursor: grabbing;
 }
@@ -615,6 +619,10 @@ html, body {
     gap: 18px;
     text-align: center;
 }
+
+/* The class-level display:flex would otherwise override the UA [hidden]
+   rule, leaving the summary visible during an active block session. */
+.session-summary[hidden] { display: none; }
 
 .summary-title { margin: 0; font-size: 24px; font-weight: 700; }
 
