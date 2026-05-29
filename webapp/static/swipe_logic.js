@@ -209,6 +209,10 @@
 
     // Keyboard shortcuts (handy on desktop / Telegram Desktop)
     window.addEventListener("keydown", (e) => {
+        // Only act while the STUDY view is the visible one — the Words-tab
+        // runner has its own keyboard handling.
+        const study = document.getElementById("view-study");
+        if (study && study.hidden) return;
         if (state.busy || state.vocabId == null) return;
         if (e.key === "ArrowLeft") commitSwipe("left");
         else if (e.key === "ArrowRight") commitSwipe("right");

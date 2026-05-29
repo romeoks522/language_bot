@@ -53,6 +53,19 @@ html, body {
     gap: 16px;
 }
 
+/* Top-level views (STUDY / WORDS / stub) fill the space above the nav. */
+.view {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    gap: 16px;
+}
+
+.view[hidden] {
+    display: none;
+}
+
 /* ============ Header card ============ */
 .header-card {
     background: var(--surface);
@@ -398,6 +411,265 @@ html, body {
 .toast.toast-error {
     background: var(--danger);
     color: white;
+}
+
+/* ====================================================================
+   WORDS tab — CEFR level catalog (level grid, block list, runner)
+   ==================================================================== */
+.words-screen {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    gap: 14px;
+}
+
+.words-screen[hidden] { display: none; }
+
+.words-title {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--text);
+}
+
+.words-subhead {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.back-btn {
+    background: var(--surface);
+    border: none;
+    color: var(--text);
+    width: 40px;
+    height: 40px;
+    border-radius: var(--radius-md);
+    font-size: 26px;
+    line-height: 1;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: background 0.15s, color 0.15s;
+}
+
+.back-btn:hover { color: var(--accent); background: var(--accent-soft); }
+
+.words-loading {
+    color: var(--text-muted);
+    font-size: 14px;
+    padding: 24px 0;
+    text-align: center;
+}
+
+/* ---- Level grid (4 entry-point cards) ---- */
+.level-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+    overflow-y: auto;
+    padding-bottom: 8px;
+}
+
+.level-card,
+.block-card {
+    background: var(--surface);
+    border: none;
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg), var(--shadow-inner);
+    color: var(--text);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 16px;
+    text-align: left;
+    transition: transform 0.12s ease, box-shadow 0.15s;
+}
+
+.level-card { flex-direction: column; text-align: center; }
+
+.level-card:hover,
+.block-card:hover { transform: translateY(-2px); }
+
+.level-card:active,
+.block-card:active { transform: translateY(0); }
+
+.block-card-done { outline: 2px solid var(--accent-soft); }
+
+/* ---- Mini ring (level / block progress) ---- */
+.mini-ring {
+    position: relative;
+    width: 72px;
+    height: 72px;
+    flex-shrink: 0;
+}
+
+.mini-ring svg {
+    width: 100%;
+    height: 100%;
+    transform: rotate(-90deg);
+}
+
+.mini-ring .ring-bg { fill: none; stroke: var(--surface-2); stroke-width: 9; }
+
+.mini-ring .ring-fg {
+    fill: none;
+    stroke: var(--accent);
+    stroke-width: 9;
+    stroke-linecap: round;
+    stroke-dasharray: 326.7;
+    stroke-dashoffset: 326.7;
+    transition: stroke-dashoffset 0.5s ease;
+}
+
+.mini-ring-label {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text);
+}
+
+.level-name { font-size: 22px; font-weight: 700; }
+.level-sub,
+.block-sub { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+.block-name { font-size: 16px; font-weight: 600; }
+
+/* ---- Block list (scrollable) ---- */
+.block-list {
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding-bottom: 8px;
+}
+
+/* ---- Runner ring (block session progress) ---- */
+.runner-ring {
+    position: relative;
+    width: 44px;
+    height: 44px;
+    flex-shrink: 0;
+}
+
+.runner-svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+.runner-svg .ring-bg { fill: none; stroke: var(--surface-2); stroke-width: 10; }
+.runner-svg .ring-fg {
+    fill: none;
+    stroke: var(--accent);
+    stroke-width: 10;
+    stroke-linecap: round;
+    stroke-dasharray: 326.7;
+    stroke-dashoffset: 326.7;
+    transition: stroke-dashoffset 0.4s ease;
+}
+
+.runner-ring-text {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--text);
+}
+
+/* ---- Runner action buttons ---- */
+.runner-actions {
+    display: flex;
+    gap: 10px;
+    width: 100%;
+    margin-top: 10px;
+}
+
+.swipe-btn {
+    flex: 1;
+    border: none;
+    border-radius: var(--radius-md);
+    padding: 12px 6px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #fff;
+    cursor: pointer;
+    transition: filter 0.15s;
+}
+
+.swipe-btn:hover { filter: brightness(1.1); }
+.swipe-btn-left { background: var(--danger); }
+.swipe-btn-up { background: #F59E0B; }
+.swipe-btn-right { background: #22C55E; }
+
+/* ---- Completion summary ---- */
+.session-summary {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 18px;
+    text-align: center;
+}
+
+.summary-title { margin: 0; font-size: 24px; font-weight: 700; }
+
+.summary-stats { display: flex; gap: 18px; }
+
+.summary-stat {
+    background: var(--surface);
+    border-radius: var(--radius-md);
+    padding: 14px 18px;
+    min-width: 72px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.summary-stat span { font-size: 28px; font-weight: 700; }
+.summary-stat small { font-size: 11px; color: var(--text-muted); }
+.summary-stat.stat-right span { color: #22C55E; }
+.summary-stat.stat-up span { color: #F59E0B; }
+.summary-stat.stat-left span { color: var(--danger); }
+
+.retry-btn {
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: var(--radius-md);
+    padding: 14px 22px;
+    font-size: 15px;
+    font-weight: 700;
+    cursor: pointer;
+    box-shadow: 0 6px 16px rgba(14, 165, 233, 0.45);
+    transition: filter 0.15s;
+}
+
+.retry-btn:hover { filter: brightness(1.08); }
+
+.summary-done-btn {
+    background: transparent;
+    color: var(--text-muted);
+    border: none;
+    font-size: 14px;
+    cursor: pointer;
+}
+
+.summary-done-btn:hover { color: var(--text); }
+
+/* ---- Stub ("coming soon") view ---- */
+.stub-msg {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-muted);
+    font-size: 15px;
+    text-align: center;
 }
 
 /* Compact heights — keep the card visible on shorter screens */

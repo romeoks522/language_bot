@@ -9,54 +9,130 @@
 </head>
 <body>
     <div class="app">
-        <!-- ============ Header card ============ -->
-        <header class="header-card">
-            <div class="progress-ring" aria-label="Words learned">
-                <svg class="progress-svg" viewBox="0 0 120 120" aria-hidden="true">
-                    <circle class="ring-bg" cx="60" cy="60" r="52"></circle>
-                    <circle id="ring-progress" class="ring-fg" cx="60" cy="60" r="52"></circle>
-                </svg>
-                <div class="ring-text">
-                    <div class="ring-label">WORDS<br>LEARNED:</div>
-                    <div class="ring-value" id="words-learned">—</div>
-                    <div class="ring-today">Today: <span id="today-count">0</span> / 30</div>
+        <!-- ============ STUDY view (SRS flashcards) ============ -->
+        <main id="view-study" class="view">
+            <!-- ============ Header card ============ -->
+            <header class="header-card">
+                <div class="progress-ring" aria-label="Words learned">
+                    <svg class="progress-svg" viewBox="0 0 120 120" aria-hidden="true">
+                        <circle class="ring-bg" cx="60" cy="60" r="52"></circle>
+                        <circle id="ring-progress" class="ring-fg" cx="60" cy="60" r="52"></circle>
+                    </svg>
+                    <div class="ring-text">
+                        <div class="ring-label">WORDS<br>LEARNED:</div>
+                        <div class="ring-value" id="words-learned">—</div>
+                        <div class="ring-today">Today: <span id="today-count">0</span> / 30</div>
+                    </div>
                 </div>
-            </div>
 
-            <div class="header-actions" aria-hidden="true">
-                <button class="icon-btn" id="btn-settings" title="Settings">⚙</button>
-                <button class="icon-btn" id="btn-sound" title="Sound">🔊</button>
-                <button class="icon-btn" id="btn-vibrate" title="Vibration">📳</button>
-            </div>
-        </header>
+                <div class="header-actions" aria-hidden="true">
+                    <button class="icon-btn" id="btn-settings" title="Settings">⚙</button>
+                    <button class="icon-btn" id="btn-sound" title="Sound">🔊</button>
+                    <button class="icon-btn" id="btn-vibrate" title="Vibration">📳</button>
+                </div>
+            </header>
 
-        <!-- ============ Card area ============ -->
-        <section class="card-area">
-            <div class="hint hint-up" aria-hidden="true">Confused</div>
+            <!-- ============ Card area ============ -->
+            <section class="card-area">
+                <div class="hint hint-up" aria-hidden="true">Confused</div>
 
-            <div class="card-wrapper">
-                <div class="hint hint-left" aria-hidden="true">Don't Know</div>
+                <div class="card-wrapper">
+                    <div class="hint hint-left" aria-hidden="true">Don't Know</div>
 
-                <article id="word-card" class="word-card" role="region" aria-live="polite">
-                    <div class="card-arrow card-arrow-up">︿</div>
-                    <div class="card-content">
-                        <h1 class="word-text" id="word-text">Loading…</h1>
-                        <p class="word-ipa" id="word-ipa"></p>
+                    <article id="word-card" class="word-card" role="region" aria-live="polite">
+                        <div class="card-arrow card-arrow-up">︿</div>
+                        <div class="card-content">
+                            <h1 class="word-text" id="word-text">Loading…</h1>
+                            <p class="word-ipa" id="word-ipa"></p>
+                        </div>
+                        <div class="card-arrows-side">
+                            <span class="card-arrow card-arrow-left">‹</span>
+                            <span class="card-arrow card-arrow-right">›</span>
+                        </div>
+                        <button class="audio-btn" id="audio-btn" title="Play pronunciation" aria-label="Play pronunciation">🔊</button>
+                    </article>
+
+                    <div class="hint hint-right" aria-hidden="true">Know</div>
+                </div>
+
+                <div class="story-progress" aria-hidden="true">
+                    <span class="story-icon">🧠</span> AI STORY PROGRESS: <strong>6/8</strong>
+                </div>
+            </section>
+        </main>
+
+        <!-- ============ WORDS view (CEFR level catalog) ============ -->
+        <main id="view-words" class="view" hidden>
+            <!-- Screen 1: CEFR level grid -->
+            <section id="words-levels" class="words-screen">
+                <h2 class="words-title">Choose your level</h2>
+                <div id="level-grid" class="level-grid"><!-- level cards injected --></div>
+            </section>
+
+            <!-- Screen 2: scrollable block list for a level -->
+            <section id="words-blocks" class="words-screen" hidden>
+                <header class="words-subhead">
+                    <button class="back-btn" id="blocks-back" aria-label="Back to levels">‹</button>
+                    <h2 class="words-title" id="blocks-title">Level</h2>
+                </header>
+                <div id="block-list" class="block-list"><!-- block cards injected --></div>
+            </section>
+
+            <!-- Screen 3: flashcard runner for a block -->
+            <section id="words-runner" class="words-screen" hidden>
+                <header class="words-subhead">
+                    <button class="back-btn" id="runner-back" aria-label="Back to blocks">‹</button>
+                    <div class="runner-ring" aria-label="Block progress">
+                        <svg class="runner-svg" viewBox="0 0 120 120" aria-hidden="true">
+                            <circle class="ring-bg" cx="60" cy="60" r="52"></circle>
+                            <circle id="runner-ring-fg" class="ring-fg" cx="60" cy="60" r="52"></circle>
+                        </svg>
+                        <div class="runner-ring-text"><span id="runner-count">0</span>/<span id="runner-total">0</span></div>
                     </div>
-                    <div class="card-arrows-side">
-                        <span class="card-arrow card-arrow-left">‹</span>
-                        <span class="card-arrow card-arrow-right">›</span>
+                    <h2 class="words-title" id="runner-title">Block</h2>
+                </header>
+
+                <div class="card-area">
+                    <div class="hint hint-up" aria-hidden="true">Confusing</div>
+                    <div class="card-wrapper">
+                        <div class="hint hint-left" aria-hidden="true">Don't Know</div>
+                        <article id="runner-card" class="word-card" role="region" aria-live="polite">
+                            <div class="card-arrow card-arrow-up">︿</div>
+                            <div class="card-content">
+                                <h1 class="word-text" id="runner-word">—</h1>
+                            </div>
+                            <div class="card-arrows-side">
+                                <span class="card-arrow card-arrow-left">‹</span>
+                                <span class="card-arrow card-arrow-right">›</span>
+                            </div>
+                        </article>
+                        <div class="hint hint-right" aria-hidden="true">Know</div>
                     </div>
-                    <button class="audio-btn" id="audio-btn" title="Play pronunciation" aria-label="Play pronunciation">🔊</button>
-                </article>
+                    <div class="runner-actions">
+                        <button class="swipe-btn swipe-btn-left" data-dir="left">Don't know</button>
+                        <button class="swipe-btn swipe-btn-up" data-dir="up">Confusing</button>
+                        <button class="swipe-btn swipe-btn-right" data-dir="right">Know</button>
+                    </div>
+                </div>
 
-                <div class="hint hint-right" aria-hidden="true">Know</div>
-            </div>
+                <!-- Completion summary overlay -->
+                <div id="runner-summary" class="session-summary" hidden>
+                    <h2 class="summary-title">Block complete!</h2>
+                    <div class="summary-stats">
+                        <div class="summary-stat stat-right"><span id="sum-knew">0</span><small>Knew it</small></div>
+                        <div class="summary-stat stat-up"><span id="sum-confusing">0</span><small>Confusing</small></div>
+                        <div class="summary-stat stat-left"><span id="sum-learning">0</span><small>Don't know</small></div>
+                    </div>
+                    <button id="retry-btn" class="retry-btn" hidden>Repeat Missed / Uncertain Words</button>
+                    <button id="summary-done" class="summary-done-btn">Back to blocks</button>
+                </div>
+            </section>
+        </main>
 
-            <div class="story-progress" aria-hidden="true">
-                <span class="story-icon">🧠</span> AI STORY PROGRESS: <strong>6/8</strong>
-            </div>
-        </section>
+        <!-- ============ Generic "coming soon" view for stub tabs ======= -->
+        <main id="view-stub" class="view" hidden>
+            <div class="stub-msg"><span id="stub-name">Coming soon</span> is on the way.</div>
+        </main>
 
         <!-- ============ Bottom nav ============ -->
         <nav class="bottom-nav" aria-label="Main navigation">
@@ -82,5 +158,6 @@
     </div>
 
     <script src="/static/swipe_logic.js"></script>
+    <script src="/static/words_tab.js"></script>
 </body>
 </html>
