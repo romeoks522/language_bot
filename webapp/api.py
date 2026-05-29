@@ -20,10 +20,12 @@ Never set this in production.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import hmac
 import json
 import os
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Annotated
 from urllib.parse import parse_qsl
@@ -49,6 +51,7 @@ from core.srs_engine import (
     schedule_word,
 )
 from database.connection import get_session
+from database.migrate import upgrade_to_head
 from database.models.user import User
 from database.models.user_block_word import UserBlockWord
 from database.models.user_vocabulary import UserVocabulary, VocabStatus
@@ -61,7 +64,29 @@ log = get_logger(__name__)
 _WEBAPP_DIR = Path(__file__).resolve().parent
 templates = Jinja2Templates(directory=str(_WEBAPP_DIR / "templates"))
 
-app = FastAPI(title="Language Bot Web App", docs_url="/api/docs")
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    """Bring the database schema up to ``head`` before serving traffic.
+
+    Without this, deploying new code against a database that has not had
+    ``alembic upgrade head`` run leaves the schema stale (e.g. a missing
+    ``words.frequency_score`` column), which surfaces as HTTP 500s. The
+    upgrade is a no-op when the database is already current. A failure is
+    logged loudly but does not abort startup, so the rest of the app and the
+    bot keep running.
+    """
+    try:
+        await asyncio.to_thread(upgrade_to_head)
+        log.info("Database schema is up to date (alembic upgrade head).")
+    except Exception:  # noqa: BLE001 — never let a migration hiccup kill boot
+        log.exception(
+            "Automatic 'alembic upgrade head' failed. Run it manually on the "
+            "database, then restart."
+        )
+    yield
+
+
+app = FastAPI(title="Language Bot Web App", docs_url="/api/docs", lifespan=lifespan)
 app.mount(
     "/static",
     StaticFiles(directory=str(_WEBAPP_DIR / "static")),
